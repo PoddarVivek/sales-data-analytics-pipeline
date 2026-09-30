@@ -1,219 +1,55 @@
-# 🛒 Retail Sales Analytics Pipeline (SQL Project)
+# Retail Sales Analytics Pipeline
 
-![SQL](https://img.shields.io/badge/SQL-Data%20Analysis-blue)
-![Project Level](https://img.shields.io/badge/Level-Beginner--to--Intermediate-green)
-![Status](https://img.shields.io/badge/Status-Completed-brightgreen)
+A reproducible SQL analysis of two years of retail transactions. One command loads the raw CSV, cleans it with logged rules, runs 13 business queries, and writes results, charts and a findings report.
 
----
-
-## 🚀 Project Overview
-
-This project demonstrates an **end-to-end data analytics pipeline using SQL**, covering database design, data cleaning, exploratory data analysis (EDA), and business insight generation.
-
-The goal is to simulate real-world responsibilities of a **Data Analyst**, transforming raw retail sales data into meaningful insights that support business decisions.
-
----
-
-## 🎯 Problem Statement
-
-Retail businesses generate large volumes of transactional data, but without proper analysis, valuable insights remain hidden.
-
-👉 This project answers key business questions such as:
-
-* Which product categories generate the most revenue?
-* Who are the top customers?
-* When do sales peak?
-* How does customer behavior vary?
-
----
-
-## 🏗️ Tech Stack
-
-* **SQL (PostgreSQL / MySQL compatible)**
-* Data Analysis using:
-
-  * Aggregations (`SUM`, `AVG`, `COUNT`)
-  * Window Functions (`RANK()`)
-  * CTEs (Common Table Expressions)
-* Data Cleaning using:
-
-  * NULL handling
-  * Filtering
-
----
-
-## 🗂️ Project Structure
-
-```
-sales-data-analytics-pipeline/
-│
-├── data/
-│   └── retail_sales.csv
-│
-├── sql/
-│   ├── database_setup.sql
-│   ├── data_cleaning.sql
-│   └── analysis_queries.sql
-│
-├── outputs/
-│   └── insights.md
-│
-└── README.md
+```bash
+pip install -r requirements.txt
+python pipeline.py
 ```
 
----
+## What it found
 
-## ⚙️ Database Schema
+Full write-up with every number generated from the data: [`outputs/insights.md`](outputs/insights.md).
 
-```sql
-CREATE DATABASE p1_retail_db;
+- **Sales are seasonal.** September to December brings 57% of revenue in 8 of 24 months, about 2.7x a normal month.
+- **Volume drives the peak, not basket size.** Average order value is 461 in peak months and 454 otherwise.
+- **Categories are nearly interchangeable.** Revenue differs by 9% between best and worst, with margins within a point of each other.
+- **Evenings dominate.** 64% of orders are placed from 5 pm.
 
-CREATE TABLE retail_sales (
-    transactions_id INT PRIMARY KEY,
-    sale_date DATE,
-    sale_time TIME,
-    customer_id INT,
-    gender VARCHAR(10),
-    age INT,
-    category VARCHAR(35),
-    quantity INT,
-    price_per_unit FLOAT,
-    cogs FLOAT,
-    total_sale FLOAT
-);
+![Monthly revenue](outputs/charts/monthly_revenue.png)
+
+## How it works
+
+| Step | File | What happens |
+|---|---|---|
+| Load | `sql/01_schema.sql` | Reads `data/retail_sales.csv` into a raw table, untouched |
+| Clean | `sql/02_cleaning.sql` | Drops rows missing money fields, keeps missing ages, logs every removal to `data_quality_log` |
+| Analyse | `sql/03_analysis.sql` | 13 named queries: revenue and profit by category, monthly trend, top customers, shifts, age bands, customer concentration |
+| Export | `pipeline.py`, `report.py` | Writes `outputs/results/*.csv`, charts and `insights.md` |
+| Verify | `tests/` | Row counts reconcile, revenue identity holds, category and monthly totals match the grand total |
+
+The SQL runs on DuckDB and uses standard constructs (CTEs, window functions, `RANK`, `NTILE`), so it ports to PostgreSQL with `strftime` swapped for `TO_CHAR`.
+
+## Data quality decisions
+
+- 2,000 rows received, 3 dropped because quantity, price, cost or total was missing, 1,997 analysed.
+- 10 kept rows have no age. They are excluded from age analysis only, rather than dropping otherwise valid sales.
+- No duplicate transaction IDs, and `total_sale` equals `quantity x price_per_unit` on every row.
+
+## Limits
+
+- The equal margins across categories and very regular order values suggest the dataset is synthetic, so the patterns show method rather than market truth.
+- Customers 1 to 5 place 63 to 76 orders each against an average of 13, which can indicate placeholder accounts. Customer-level findings should be checked before use.
+- Two years cannot separate seasonality from one-off promotions.
+- The business question list follows a widely used SQL practice exercise. The cleaning rules, extra analyses, pipeline, tests and findings are my own work.
+
+## Run the tests
+
+```bash
+pip install -r requirements-dev.txt
+pytest
 ```
 
----
+## Author
 
-## 🧹 Data Cleaning
-
-* Removed records with NULL values
-* Ensured consistency across all columns
-* Verified dataset integrity
-
-```sql
-DELETE FROM retail_sales
-WHERE 
-    sale_date IS NULL OR sale_time IS NULL OR customer_id IS NULL OR 
-    gender IS NULL OR age IS NULL OR category IS NULL OR 
-    quantity IS NULL OR price_per_unit IS NULL OR cogs IS NULL;
-```
-
----
-
-## 📊 Exploratory Data Analysis
-
-* Total number of transactions
-* Unique customers
-* Product category distribution
-
-```sql
-SELECT COUNT(*) FROM retail_sales;
-SELECT COUNT(DISTINCT customer_id) FROM retail_sales;
-SELECT DISTINCT category FROM retail_sales;
-```
-
----
-
-## 📈 Business Insights (Key Queries)
-
-### 🔹 Top 5 Customers by Sales
-
-```sql
-SELECT 
-    customer_id,
-    SUM(total_sale) AS total_sales
-FROM retail_sales
-GROUP BY customer_id
-ORDER BY total_sales DESC
-LIMIT 5;
-```
-
----
-
-### 🔹 Best Selling Month (Per Year)
-
-```sql
-SELECT 
-    year,
-    month,
-    avg_sale
-FROM (
-    SELECT 
-        EXTRACT(YEAR FROM sale_date) AS year,
-        EXTRACT(MONTH FROM sale_date) AS month,
-        AVG(total_sale) AS avg_sale,
-        RANK() OVER (
-            PARTITION BY EXTRACT(YEAR FROM sale_date)
-            ORDER BY AVG(total_sale) DESC
-        ) AS rank
-    FROM retail_sales
-    GROUP BY 1,2
-) t
-WHERE rank = 1;
-```
-
----
-
-### 🔹 Sales by Time Shift
-
-```sql
-WITH hourly_sale AS (
-SELECT *,
-    CASE
-        WHEN EXTRACT(HOUR FROM sale_time) < 12 THEN 'Morning'
-        WHEN EXTRACT(HOUR FROM sale_time) BETWEEN 12 AND 17 THEN 'Afternoon'
-        ELSE 'Evening'
-    END AS shift
-FROM retail_sales
-)
-SELECT 
-    shift,
-    COUNT(*) AS total_orders
-FROM hourly_sale
-GROUP BY shift;
-```
-
----
-
-## 💡 Key Insights
-
-* 📌 Certain categories consistently generate higher revenue
-* 💰 High-value transactions (>1000) indicate premium customer segments
-* 📈 Sales peak during specific months (seasonality trends)
-* 👥 Top customers contribute disproportionately to revenue
-* ⏰ Afternoon & evening shifts show higher sales volume
-
----
-
-## 🧠 What I Learned
-
-* Writing optimized SQL queries
-* Translating business problems into analytical queries
-* Using window functions for advanced analysis
-* Structuring a real-world analytics project
-
----
-
-## 📌 Future Improvements
-
-* 📊 Build Power BI / Tableau dashboard
-* 🧱 Add ER Diagram
-* ☁️ Deploy using cloud (AWS / GCP)
-* 🔄 Automate pipeline using Python
-
----
-
-## 👨‍💻 Author
-
-**Vivek Poddar**
-📧 [vivekpoddar.work@gmail.com](mailto:vivekpoddar.work@gmail.com)
-🔗 https://www.linkedin.com/in/vivekpoddar-work
-
----
-
-## ⭐ If you found this helpful
-
-Give this repo a ⭐ and feel free to connect!
-
----
+Vivek Poddar, B.Tech ECE, NIT Kurukshetra. [Portfolio](https://poddarvivek.github.io/) / [LinkedIn](https://www.linkedin.com/in/vivekpoddar-work)

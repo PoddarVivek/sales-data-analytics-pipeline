@@ -1,0 +1,7 @@
+check_name,value
+rows received,2000
+"rows dropped (missing quantity, price, cogs or total)",3
+rows kept,1997
+kept rows with missing age,10
+duplicate transaction_id,0
+rows where total_sale differs from quantity x price,0

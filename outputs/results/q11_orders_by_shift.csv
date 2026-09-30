@@ -1,0 +1,4 @@
+shift,orders,revenue
+Morning (before 12),558,259900.0
+Afternoon (12 to 16),164,79400.0
+Evening (17 and later),1275,572420.0
